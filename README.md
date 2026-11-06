@@ -170,14 +170,14 @@ CI: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — `lint → typeche
    Railway автоматически подставит `DATABASE_URL` в сервис приложения
    (схема автоматически переключается на `prisma/postgres/schema.prisma` — она используется в контейнере).
 3. **Переменные окружения** (Dashboard → Variables или `railway variables set`):
-   | Переменная | Значение |
-   |---|---|
-   | `JWT_SECRET` | сгенерируйте: `openssl rand -hex 32` |
-   | `WEBHOOK_SECRET` | сгенерируйте: `openssl rand -hex 32` |
-   | `CORS_ORIGIN` | `https://<ваш-домен>.railway.app` |
-   | `ONEC_MODE` | `mock` (по умолчанию) — переключайте на `real` только с `ONEC_BASE_URL` + `ONEC_TOKEN` |
-   | `LOG_LEVEL` | `info` |
-   | `ONEC_BASE_URL`, `ONEC_TOKEN` | только для real-режима 1С (хранить в Variables, не в коде) |
+   | Переменная                    | Значение                                                                               |
+   | ----------------------------- | -------------------------------------------------------------------------------------- |
+   | `JWT_SECRET`                  | сгенерируйте: `openssl rand -hex 32`                                                   |
+   | `WEBHOOK_SECRET`              | сгенерируйте: `openssl rand -hex 32`                                                   |
+   | `CORS_ORIGIN`                 | `https://<ваш-домен>.railway.app`                                                      |
+   | `ONEC_MODE`                   | `mock` (по умолчанию) — переключайте на `real` только с `ONEC_BASE_URL` + `ONEC_TOKEN` |
+   | `LOG_LEVEL`                   | `info`                                                                                 |
+   | `ONEC_BASE_URL`, `ONEC_TOKEN` | только для real-режима 1С (хранить в Variables, не в коде)                             |
    > `DATABASE_URL` и `PORT` Railway передаёт автоматически — задавать вручную не нужно.
 4. **Домен**: Settings → Networking → Generate Domain (или свой), затем пропишите его в `CORS_ORIGIN`.
 5. Проверка: `GET /api/health` → `{"status":"ok","mode":"mock"}`, UI открывается на корневом пути.

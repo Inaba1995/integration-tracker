@@ -27,6 +27,11 @@ jobs:
       - name: Генерация Prisma-клиента
         run: npx prisma generate
 
+      - name: Валидация схем Prisma (SQLite и PostgreSQL)
+        run: |
+          DATABASE_URL="file:./dev.db" npx prisma validate
+          DATABASE_URL="postgresql://user:pass@localhost:5432/tracker" npx prisma validate --schema prisma/postgres/schema.prisma
+
       - name: Lint
         run: npm run lint
 
