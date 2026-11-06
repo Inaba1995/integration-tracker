@@ -1,0 +1,2236 @@
+openapi: 3.1.0
+info:
+  title: Трекер интеграции ИИ-ассистент ↔ 1С:Фитнес клуб
+  version: 1.0.0
+  description: "REST API трекера проекта интеграции: фичи и задачи, API Explorer, webhook-приёмник с идемпотентностью,
+    записи на занятия, расписание, журнал ошибок с ретраями, отчёты. Все внешние вызовы к 1С идут через адаптер (mock по
+    умолчанию, real — по флагу ONEC_MODE)."
+servers:
+  - url: http://localhost:4000
+    description: Локальный запуск
+tags:
+  - name: auth
+    description: Аутентификация и здоровье
+  - name: features
+    description: Функции интеграции
+  - name: tasks
+    description: Задачи
+  - name: endpoints
+    description: API Explorer
+  - name: webhooks
+    description: Webhook-приёмник
+  - name: leads
+    description: Заявки клиентов
+  - name: schedule
+    description: Расписание, услуги, специалисты
+  - name: clients
+    description: Клиенты
+  - name: bookings
+    description: Записи на занятия
+  - name: errors
+    description: Журнал ошибок
+  - name: estimates
+    description: Оценки
+  - name: reports
+    description: Отчёты
+  - name: settings
+    description: Настройки и пользователи
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Внутренний код ошибки (NO_SEATS, VALIDATION, ...)
+            message:
+              type: string
+              description: Человекочитаемое сообщение
+            details:
+              description: Детали (для VALIDATION — список проблем)
+            correlationId:
+              type: string
+              description: ID запроса для трассировки
+          required:
+            - code
+            - message
+      required:
+        - error
+    Feature:
+      type: object
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+          description: Уникальный код фичи, например F-01
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          description: PLANNED | IN_PROGRESS | BLOCKED | DONE
+        implementationType:
+          type: string
+          description: STANDARD_API | EXTENSION | CUSTOM_HTTP_SERVICE | TBD
+        priority:
+          type: string
+          description: LOW | MEDIUM | HIGH | CRITICAL
+        estimateDays:
+          type: number
+          description: Оценка в днях
+          nullable: true
+        estimateCost:
+          type: number
+          description: Оценка в рублях
+          nullable: true
+        notes:
+          type: string
+        createdAt:
+          type: string
+          description: date-time
+        updatedAt:
+          type: string
+          description: date-time
+      required:
+        - id
+        - code
+        - title
+        - status
+        - implementationType
+    IntegrationTask:
+      type: object
+      properties:
+        id:
+          type: string
+        featureId:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          description: TODO | IN_PROGRESS | BLOCKED | DONE
+        assigneeId:
+          type: string
+          nullable: true
+        dueDate:
+          type: string
+          description: date-time
+          nullable: true
+        description:
+          type: string
+        createdAt:
+          type: string
+          description: date-time
+        updatedAt:
+          type: string
+          description: date-time
+      required:
+        - id
+        - featureId
+        - title
+        - status
+    ApiEndpoint:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        method:
+          type: string
+          description: GET | POST | PUT | PATCH | DELETE
+        path:
+          type: string
+        direction:
+          type: string
+          description: INBOUND | OUTBOUND
+        payloadSchema:
+          type: string
+          description: JSON-схема (строка)
+        responseSchema:
+          type: string
+          description: JSON-схема (строка)
+        status:
+          type: string
+          description: DRAFT | MOCKED | LIVE | FAILING
+        notes:
+          type: string
+        createdAt:
+          type: string
+          description: date-time
+        updatedAt:
+          type: string
+          description: date-time
+      required:
+        - id
+        - name
+        - method
+        - path
+        - direction
+        - status
+    WebhookEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+        eventType:
+          type: string
+        payloadJson:
+          type: string
+          description: JSON-полезная нагрузка
+        receivedAt:
+          type: string
+          description: date-time
+        status:
+          type: string
+          description: RECEIVED | PROCESSED | DUPLICATE | FAILED
+        idempotencyKey:
+          type: string
+        correlationId:
+          type: string
+          nullable: true
+        processedAt:
+          type: string
+          description: date-time
+          nullable: true
+      required:
+        - id
+        - eventType
+        - status
+        - idempotencyKey
+    WebhookResult:
+      type: object
+      properties:
+        eventId:
+          type: string
+        status:
+          type: string
+          description: RECEIVED | PROCESSED | DUPLICATE | FAILED
+        duplicate:
+          type: boolean
+          description: true — повтор по idempotencyKey
+        leadId:
+          type: string
+          description: Созданная заявка (для lead.created)
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+      required:
+        - eventId
+        - status
+        - duplicate
+    Client:
+      type: object
+      properties:
+        id:
+          type: string
+        externalId:
+          type: string
+          description: ID клиента в 1С
+          nullable: true
+        fullName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          description: date-time
+      required:
+        - id
+        - fullName
+        - phone
+    Lead:
+      type: object
+      properties:
+        id:
+          type: string
+        clientId:
+          type: string
+          nullable: true
+        source:
+          type: string
+          description: VK | TELEGRAM | WHATSAPP | MAX | EMAIL | WEB | OTHER
+        payloadJson:
+          type: string
+        status:
+          type: string
+          description: NEW | SENT_TO_1C | DUPLICATE | ERROR
+        idempotencyKey:
+          type: string
+        externalId:
+          type: string
+          description: ID заявки в 1С
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          description: date-time
+        updatedAt:
+          type: string
+          description: date-time
+      required:
+        - id
+        - status
+        - idempotencyKey
+    ScheduleSlot:
+      type: object
+      properties:
+        id:
+          type: string
+        serviceId:
+          type: string
+          description: code услуги
+        specialistId:
+          type: string
+          description: code специалиста
+        startAt:
+          type: string
+          description: date-time
+        endAt:
+          type: string
+          description: date-time
+        capacity:
+          type: integer
+          description: Вместимость
+        bookedCount:
+          type: integer
+          description: Занято мест
+        syncedAt:
+          type: string
+          description: date-time
+      required:
+        - id
+        - serviceId
+        - specialistId
+        - startAt
+        - endAt
+        - capacity
+        - bookedCount
+    Service:
+      type: object
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        direction:
+          type: string
+          description: Направление/категория
+        price:
+          type: number
+          nullable: true
+        active:
+          type: boolean
+      required:
+        - id
+        - code
+        - name
+    Specialist:
+      type: object
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        fullName:
+          type: string
+        phone:
+          type: string
+        active:
+          type: boolean
+      required:
+        - id
+        - code
+        - fullName
+    Booking:
+      type: object
+      properties:
+        id:
+          type: string
+        externalId:
+          type: string
+          description: ID записи в 1С
+          nullable: true
+        clientId:
+          type: string
+        serviceId:
+          type: string
+        specialistId:
+          type: string
+        scheduleSlotId:
+          type: string
+          nullable: true
+        slotStart:
+          type: string
+          description: date-time
+        slotEnd:
+          type: string
+          description: date-time
+        status:
+          type: string
+          description: PENDING | CONFIRMED | CANCELLED | RESCHEDULED
+        idempotencyKey:
+          type: string
+        errorCode:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          description: date-time
+        updatedAt:
+          type: string
+          description: date-time
+      required:
+        - id
+        - clientId
+        - serviceId
+        - specialistId
+        - slotStart
+        - slotEnd
+        - status
+    BookingResult:
+      type: object
+      properties:
+        booking:
+          $ref: "#/components/schemas/Booking"
+        duplicate:
+          type: boolean
+          description: true — повтор по idempotencyKey, сущность не создана
+      required:
+        - booking
+        - duplicate
+    ErrorLog:
+      type: object
+      properties:
+        id:
+          type: string
+        context:
+          type: string
+          description: lead | booking | schedule | webhook ...
+        errorCode:
+          type: string
+          description: Внутренний код
+        rawCode:
+          type: string
+          description: Оригинальный код 1С
+        message:
+          type: string
+        payloadJson:
+          type: string
+        retryCount:
+          type: integer
+        status:
+          type: string
+          description: PENDING | RETRYING | FAILED | RESOLVED
+        correlationId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          description: date-time
+        updatedAt:
+          type: string
+          description: date-time
+      required:
+        - id
+        - errorCode
+        - message
+        - status
+    Estimate:
+      type: object
+      properties:
+        id:
+          type: string
+        featureId:
+          type: string
+        hours:
+          type: number
+        cost:
+          type: number
+        currency:
+          type: string
+          description: RUB
+        comment:
+          type: string
+        createdAt:
+          type: string
+          description: date-time
+      required:
+        - id
+        - featureId
+        - hours
+        - cost
+    AuthUser:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          description: ADMIN | INTEGRATOR | VIEWER
+      required:
+        - id
+        - email
+        - role
+    Settings:
+      type: object
+      properties:
+        oneCMode:
+          type: string
+          description: mock | real
+        realConfigured:
+          type: boolean
+          description: ONEC_BASE_URL и ONEC_TOKEN заданы
+        tokenConfigured:
+          type: boolean
+        nodeEnv:
+          type: string
+        corsOrigin:
+          type: string
+      required:
+        - oneCMode
+    SummaryReport:
+      type: object
+      properties:
+        features:
+          type: object
+          properties:
+            total:
+              type: integer
+            byStatus:
+              type: array
+              items:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  count:
+                    type: integer
+            byImplementationType:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  count:
+                    type: integer
+            totals:
+              type: object
+              properties:
+                estimateDays:
+                  type: number
+                estimateCost:
+                  type: number
+        estimates:
+          type: object
+          properties:
+            count:
+              type: integer
+            hours:
+              type: number
+            cost:
+              type: number
+            currency:
+              type: string
+        tasks:
+          type: object
+          properties:
+            total:
+              type: integer
+            byStatus:
+              type: array
+              items:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  count:
+                    type: integer
+        endpoints:
+          type: object
+          properties:
+            total:
+              type: integer
+            byStatus:
+              type: array
+              items:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  count:
+                    type: integer
+        duplicates:
+          type: object
+          properties:
+            webhookEvents:
+              type: integer
+            leads:
+              type: integer
+        errors:
+          type: object
+          properties:
+            total:
+              type: integer
+            byStatus:
+              type: array
+              items:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  count:
+                    type: integer
+            recent:
+              type: array
+              items:
+                $ref: "#/components/schemas/ErrorLog"
+        bookings:
+          type: object
+          properties:
+            total:
+              type: integer
+            byStatus:
+              type: array
+              items:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  count:
+                    type: integer
+        leads:
+          type: object
+          properties:
+            total:
+              type: integer
+            byStatus:
+              type: array
+              items:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  count:
+                    type: integer
+        inventory:
+          type: object
+          properties:
+            clients:
+              type: integer
+            slots:
+              type: integer
+            services:
+              type: integer
+            specialists:
+              type: integer
+            users:
+              type: integer
+            webhooks:
+              type: integer
+      required:
+        - features
+        - tasks
+        - errors
+        - bookings
+    StandardVsCustomReport:
+      type: object
+      properties:
+        labels:
+          type: object
+          properties: {}
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+              title:
+                type: string
+              status:
+                type: string
+              implementationType:
+                type: string
+                description: STANDARD_API | EXTENSION | CUSTOM_HTTP_SERVICE | TBD
+              priority:
+                type: string
+              estimateDays:
+                type: number
+                nullable: true
+              estimateCost:
+                type: number
+                nullable: true
+              tasksTotal:
+                type: integer
+              tasksDone:
+                type: integer
+              notes:
+                type: string
+    TestRequestResult:
+      type: object
+      properties:
+        endpointId:
+          type: string
+        mode:
+          type: string
+          description: mock | real
+        durationMs:
+          type: integer
+        request:
+          description: Отправленный запрос
+        response:
+          description: Ответ (в mock-режиме — симуляция)
+        endpointStatus:
+          type: string
+          description: MOCKED | LIVE | FAILING
+      required:
+        - endpointId
+        - mode
+        - durationMs
+    SyncResult:
+      type: object
+      properties:
+        slots:
+          type: integer
+        services:
+          type: integer
+        specialists:
+          type: integer
+        status:
+          type: string
+          description: OK
+      required:
+        - slots
+        - services
+        - specialists
+        - status
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      tags:
+        - auth
+      summary: "Вход по email и паролю → JWT (роли: ADMIN, INTEGRATOR, VIEWER)"
+      operationId: post_auth_login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  pattern: ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+                password:
+                  type: string
+                  minLength: 1
+              required:
+                - email
+                - password
+      security: []
+      responses:
+        "200":
+          description: Токен и пользователь
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT
+                  user:
+                    $ref: "#/components/schemas/AuthUser"
+                required:
+                  - token
+                  - user
+        "401":
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /auth/me:
+    get:
+      tags:
+        - auth
+      summary: Текущий пользователь
+      operationId: get_auth_me
+      responses:
+        "200":
+          description: Пользователь
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "401":
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /health:
+    get:
+      tags:
+        - auth
+      summary: Проверка живости сервиса и режима 1С
+      operationId: get_health
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  mode:
+                    type: string
+                    description: mock | real
+                  time:
+                    type: string
+                    description: date-time
+  /features:
+    get:
+      tags:
+        - features
+      summary: "Список функций интеграции (фильтры: status, implementationType, priority)"
+      operationId: get_features
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: implementationType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: priority
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: direction
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: featureId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: context
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Фичи
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Feature"
+    post:
+      tags:
+        - features
+      summary: Создать фичу (роль INTEGRATOR+)
+      operationId: post_features
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 300
+                description:
+                  type: string
+                  maxLength: 5000
+                status:
+                  type: string
+                  enum:
+                    - PLANNED
+                    - IN_PROGRESS
+                    - BLOCKED
+                    - DONE
+                implementationType:
+                  type: string
+                  enum:
+                    - STANDARD_API
+                    - EXTENSION
+                    - CUSTOM_HTTP_SERVICE
+                    - TBD
+                priority:
+                  type: string
+                  enum:
+                    - LOW
+                    - MEDIUM
+                    - HIGH
+                    - CRITICAL
+                estimateDays:
+                  anyOf:
+                    - type: number
+                      minimum: 0
+                    - type: "null"
+                estimateCost:
+                  anyOf:
+                    - type: number
+                      minimum: 0
+                    - type: "null"
+                notes:
+                  type: string
+                  maxLength: 5000
+              required:
+                - code
+                - title
+      responses:
+        "201":
+          description: Создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feature"
+        "400":
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /features/{id}:
+    get:
+      tags:
+        - features
+      summary: Фича по id
+      operationId: get_features_id_
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Идентификатор записи
+      responses:
+        "200":
+          description: Фича
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feature"
+        "404":
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags:
+        - features
+      summary: Изменить фичу, включая inline-оценки (роль INTEGRATOR+)
+      operationId: patch_features_id_
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 300
+                description:
+                  type: string
+                  maxLength: 5000
+                status:
+                  type: string
+                  enum:
+                    - PLANNED
+                    - IN_PROGRESS
+                    - BLOCKED
+                    - DONE
+                implementationType:
+                  type: string
+                  enum:
+                    - STANDARD_API
+                    - EXTENSION
+                    - CUSTOM_HTTP_SERVICE
+                    - TBD
+                priority:
+                  type: string
+                  enum:
+                    - LOW
+                    - MEDIUM
+                    - HIGH
+                    - CRITICAL
+                estimateDays:
+                  anyOf:
+                    - type: number
+                      minimum: 0
+                    - type: "null"
+                estimateCost:
+                  anyOf:
+                    - type: number
+                      minimum: 0
+                    - type: "null"
+                notes:
+                  type: string
+                  maxLength: 5000
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Идентификатор записи
+      responses:
+        "200":
+          description: Обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feature"
+        "404":
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /tasks:
+    get:
+      tags:
+        - tasks
+      summary: "Задачи интеграции (фильтры: featureId, status)"
+      operationId: get_tasks
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: implementationType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: priority
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: direction
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: featureId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: context
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Задачи
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationTask"
+    post:
+      tags:
+        - tasks
+      summary: Создать задачу (роль INTEGRATOR+)
+      operationId: post_tasks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                featureId:
+                  type: string
+                  minLength: 1
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 300
+                status:
+                  type: string
+                  enum:
+                    - TODO
+                    - IN_PROGRESS
+                    - BLOCKED
+                    - DONE
+                assigneeId:
+                  type:
+                    - string
+                    - "null"
+                dueDate:
+                  anyOf:
+                    - type: string
+                      format: date-time
+                      pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                    - type: "null"
+                description:
+                  type: string
+                  maxLength: 5000
+              required:
+                - featureId
+                - title
+      responses:
+        "201":
+          description: Создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationTask"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /tasks/{id}:
+    patch:
+      tags:
+        - tasks
+      summary: Изменить задачу (роль INTEGRATOR+)
+      operationId: patch_tasks_id_
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                featureId:
+                  type: string
+                  minLength: 1
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 300
+                status:
+                  type: string
+                  enum:
+                    - TODO
+                    - IN_PROGRESS
+                    - BLOCKED
+                    - DONE
+                assigneeId:
+                  type:
+                    - string
+                    - "null"
+                dueDate:
+                  anyOf:
+                    - type: string
+                      format: date-time
+                      pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                    - type: "null"
+                description:
+                  type: string
+                  maxLength: 5000
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Идентификатор записи
+      responses:
+        "200":
+          description: Обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationTask"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /endpoints:
+    get:
+      tags:
+        - endpoints
+      summary: "API Explorer: список эндпоинтов 1С"
+      operationId: get_endpoints
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: implementationType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: priority
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: direction
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: featureId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: context
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Эндпоинты
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApiEndpoint"
+    post:
+      tags:
+        - endpoints
+      summary: Добавить эндпоинт (роль INTEGRATOR+)
+      operationId: post_endpoints
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 300
+                method:
+                  type: string
+                  enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                path:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                direction:
+                  type: string
+                  enum:
+                    - INBOUND
+                    - OUTBOUND
+                payloadSchema:
+                  type: string
+                responseSchema:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                    - DRAFT
+                    - MOCKED
+                    - LIVE
+                    - FAILING
+                notes:
+                  type: string
+                  maxLength: 5000
+              required:
+                - name
+                - method
+                - path
+                - direction
+      responses:
+        "201":
+          description: Создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEndpoint"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /endpoints/{id}:
+    patch:
+      tags:
+        - endpoints
+      summary: Изменить эндпоинт (роль INTEGRATOR+)
+      operationId: patch_endpoints_id_
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 300
+                method:
+                  type: string
+                  enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                path:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                direction:
+                  type: string
+                  enum:
+                    - INBOUND
+                    - OUTBOUND
+                payloadSchema:
+                  type: string
+                responseSchema:
+                  type: string
+                status:
+                  type: string
+                  enum:
+                    - DRAFT
+                    - MOCKED
+                    - LIVE
+                    - FAILING
+                notes:
+                  type: string
+                  maxLength: 5000
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Идентификатор записи
+      responses:
+        "200":
+          description: Обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiEndpoint"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /endpoints/{id}/test:
+    post:
+      tags:
+        - endpoints
+      summary: Отправить тестовый запрос (в mock-режиме — симуляция; роль INTEGRATOR+)
+      operationId: post_endpoints_id_test
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Идентификатор записи
+      responses:
+        "200":
+          description: Результат теста
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestRequestResult"
+        "400":
+          description: Тест не настроен / запрещён в real-режиме
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /webhooks:
+    get:
+      tags:
+        - webhooks
+      summary: Лента входящих событий (Webhook Console)
+      operationId: get_webhooks
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: События
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WebhookEvent"
+  /webhooks/1c:
+    post:
+      tags:
+        - webhooks
+      summary: "Приём события от 1С/ИИ-ассистента. Идемпотентность: повтор ключа → DUPLICATE. Аутентификация: HMAC-подпись
+        x-webhook-signature (SHA-256) ИЛИ x-webhook-token, ИЛИ валидный JWT (Webhook Console). Rate-limit: 60
+        запросов/мин"
+      operationId: post_webhooks_1c
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                eventType:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                payload: {}
+                idempotencyKey:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+              required:
+                - eventType
+                - payload
+                - idempotencyKey
+      security: []
+      responses:
+        "200":
+          description: Дубликат или FAILED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookResult"
+        "202":
+          description: Событие принято в обработку
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookResult"
+        "401":
+          description: Неверная подпись/секрет
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Превышен rate-limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /webhooks/{id}/reprocess:
+    post:
+      tags:
+        - webhooks
+      summary: Повторная обработка события (роль INTEGRATOR+)
+      operationId: post_webhooks_id_reprocess
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Идентификатор записи
+      responses:
+        "200":
+          description: Результат
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookResult"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /leads:
+    get:
+      tags:
+        - leads
+      summary: Заявки клиентов
+      operationId: get_leads
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Заявки
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lead"
+    post:
+      tags:
+        - leads
+      summary: Создать заявку и передать в 1С (идемпотентность, ретраи max 3; роль INTEGRATOR+)
+      operationId: post_leads
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                idempotencyKey:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+                source:
+                  type: string
+                  enum:
+                    - VK
+                    - TELEGRAM
+                    - WHATSAPP
+                    - MAX
+                    - EMAIL
+                    - WEB
+                    - OTHER
+                client:
+                  type: object
+                  properties:
+                    fullName:
+                      type: string
+                      minLength: 1
+                      maxLength: 300
+                    phone:
+                      type: string
+                      minLength: 3
+                      maxLength: 64
+                    email:
+                      type: string
+                      format: email
+                      pattern: ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+                  required:
+                    - fullName
+                    - phone
+                payload:
+                  type: object
+                  propertyNames:
+                    type: string
+                  additionalProperties: {}
+              required:
+                - idempotencyKey
+                - client
+      responses:
+        "200":
+          description: Дубликат (тот же idempotencyKey)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lead:
+                    $ref: "#/components/schemas/Lead"
+                  duplicate:
+                    type: boolean
+        "201":
+          description: Заявка создана и передана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lead:
+                    $ref: "#/components/schemas/Lead"
+                  client:
+                    $ref: "#/components/schemas/Client"
+                  duplicate:
+                    type: boolean
+        "409":
+          description: Бизнес-отказ 1С
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Ошибка 1С после ретраев
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /schedule:
+    get:
+      tags:
+        - schedule
+      summary: Расписание слотов (фильтры from/to/serviceCode/specialistCode)
+      operationId: get_schedule
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: serviceCode
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: specialistCode
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Слоты
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduleSlot"
+  /schedule/sync:
+    post:
+      tags:
+        - schedule
+      summary: Синхронизация расписания/услуг/специалистов из 1С (роль INTEGRATOR+)
+      operationId: post_schedule_sync
+      responses:
+        "200":
+          description: Результат синхронизации
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncResult"
+        "503":
+          description: 1С недоступна
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /services:
+    get:
+      tags:
+        - schedule
+      summary: Список услуг и направлений
+      operationId: get_services
+      responses:
+        "200":
+          description: Услуги
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Service"
+  /specialists:
+    get:
+      tags:
+        - schedule
+      summary: Список специалистов
+      operationId: get_specialists
+      responses:
+        "200":
+          description: Специалисты
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Specialist"
+  /clients:
+    get:
+      tags:
+        - clients
+      summary: Клиенты (фильтр по phone — подстрока)
+      operationId: get_clients
+      parameters:
+        - name: phone
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Клиенты
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Client"
+    post:
+      tags:
+        - clients
+      summary: Создать клиента (роль INTEGRATOR+)
+      operationId: post_clients
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName:
+                  type: string
+                  minLength: 1
+                  maxLength: 300
+                phone:
+                  type: string
+                  minLength: 3
+                  maxLength: 64
+                email:
+                  type: string
+                  format: email
+                  pattern: ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+              required:
+                - fullName
+                - phone
+      responses:
+        "200":
+          description: Уже существует
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  client:
+                    $ref: "#/components/schemas/Client"
+                  duplicate:
+                    type: boolean
+        "201":
+          description: Создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  client:
+                    $ref: "#/components/schemas/Client"
+                  duplicate:
+                    type: boolean
+      description: Требуется роль INTEGRATOR или ADMIN
+  /bookings:
+    get:
+      tags:
+        - bookings
+      summary: Записи на занятия (фильтр status)
+      operationId: get_bookings
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Записи
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Booking"
+    post:
+      tags:
+        - bookings
+      summary: "Запись на занятие: идемпотентность, проверка мест/слота/активности клиента, подтверждение в 1С (роль
+        INTEGRATOR+)"
+      operationId: post_bookings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                clientId:
+                  type: string
+                  minLength: 1
+                slotId:
+                  type: string
+                  minLength: 1
+                idempotencyKey:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+              required:
+                - clientId
+                - slotId
+                - idempotencyKey
+      responses:
+        "200":
+          description: Дубликат (тот же idempotencyKey)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingResult"
+        "201":
+          description: Запись подтверждена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingResult"
+        "404":
+          description: Слот/клиент не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: NO_SEATS | SLOT_TAKEN | CLIENT_INACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Ошибка 1С после ретраев (см. /errors)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /bookings/{id}:
+    get:
+      tags:
+        - bookings
+      summary: Запись по id
+      operationId: get_bookings_id_
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Идентификатор записи
+      responses:
+        "200":
+          description: Запись
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "404":
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags:
+        - bookings
+      summary: Ограниченные правки (clientId, clearError). Статусы — через cancel/reschedule (роль INTEGRATOR+)
+      operationId: patch_bookings_id_
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Идентификатор записи
+      responses:
+        "200":
+          description: Запись
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /bookings/{id}/cancel:
+    post:
+      tags:
+        - bookings
+      summary: Отмена записи (только CONFIRMED; освобождает место; роль INTEGRATOR+)
+      operationId: post_bookings_id_cancel
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Идентификатор записи
+      responses:
+        "200":
+          description: Отменена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "409":
+          description: BOOKING_NOT_CONFIRMED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Ошибка 1С после ретраев
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /bookings/{id}/reschedule:
+    post:
+      tags:
+        - bookings
+      summary: Перенос записи (только CONFIRMED; роль INTEGRATOR+)
+      operationId: post_bookings_id_reschedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targetSlotId:
+                  type: string
+                  minLength: 1
+                idempotencyKey:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+              required:
+                - targetSlotId
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Идентификатор записи
+      responses:
+        "200":
+          description: Перенесена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "409":
+          description: NO_SEATS | SLOT_TAKEN | BOOKING_NOT_CONFIRMED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /errors:
+    get:
+      tags:
+        - errors
+      summary: Журнал ошибок (фильтры status, context)
+      operationId: get_errors
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: implementationType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: priority
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: direction
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: featureId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: context
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ошибки
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ErrorLog"
+  /errors/{id}/retry:
+    post:
+      tags:
+        - errors
+      summary: "Повтор обработки ошибки (роль INTEGRATOR+): RETRYING → RESOLVED/FAILED"
+      operationId: post_errors_id_retry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Идентификатор записи
+      responses:
+        "200":
+          description: Обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorLog"
+        "404":
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /estimates:
+    get:
+      tags:
+        - estimates
+      summary: Оценки (фильтр featureId)
+      operationId: get_estimates
+      parameters:
+        - name: featureId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Оценки
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Estimate"
+    post:
+      tags:
+        - estimates
+      summary: Добавить оценку (роль INTEGRATOR+)
+      operationId: post_estimates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                featureId:
+                  type: string
+                  minLength: 1
+                hours:
+                  type: number
+                  minimum: 0
+                cost:
+                  type: number
+                  minimum: 0
+                currency:
+                  type: string
+                  minLength: 1
+                  maxLength: 8
+                comment:
+                  type: string
+                  maxLength: 2000
+              required:
+                - featureId
+                - hours
+                - cost
+      responses:
+        "201":
+          description: Создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Estimate"
+      description: Требуется роль INTEGRATOR или ADMIN
+  /reports/summary:
+    get:
+      tags:
+        - reports
+      summary: "Сводка: статусы фич, типы реализации, часы/стоимость, ошибки, дубли"
+      operationId: get_reports_summary
+      responses:
+        "200":
+          description: Сводка
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SummaryReport"
+  /reports/standard-vs-custom:
+    get:
+      tags:
+        - reports
+      summary: Отчёт «Стандартный API vs Доработки» (JSON)
+      operationId: get_reports_standard_vs_custom
+      responses:
+        "200":
+          description: Отчёт
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardVsCustomReport"
+  /reports/standard-vs-custom.csv:
+    get:
+      tags:
+        - reports
+      summary: Экспорт отчёта в CSV (UTF-8 BOM, разделитель «;»)
+      operationId: get_reports_standard_vs_custom_csv
+      responses:
+        "200":
+          description: CSV-файл отчёта
+          content:
+            text/csv:
+              schema:
+                type: string
+  /settings:
+    get:
+      tags:
+        - settings
+      summary: "Настройки: режим 1С, наличие секретов (роль INTEGRATOR+)"
+      operationId: get_settings
+      responses:
+        "200":
+          description: Настройки
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+      description: Требуется роль INTEGRATOR или ADMIN
+    patch:
+      tags:
+        - settings
+      summary: Переключение mock/real (роль ADMIN; real требует ONEC_BASE_URL + ONEC_TOKEN в env)
+      operationId: patch_settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                oneCMode:
+                  type: string
+                  enum:
+                    - mock
+                    - real
+              required:
+                - oneCMode
+      responses:
+        "200":
+          description: Обновлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "400":
+          description: Real-режим не настроен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      description: Требуется роль ADMIN
+  /users:
+    get:
+      tags:
+        - settings
+      summary: Пользователи без хешей паролей (роль ADMIN)
+      operationId: get_users
+      responses:
+        "200":
+          description: Пользователи
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    email:
+                      type: string
+                    role:
+                      type: string
+                    createdAt:
+                      type: string
+                      description: date-time
+      description: Требуется роль ADMIN

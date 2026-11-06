@@ -1,0 +1,7 @@
+dist
+node_modules
+ui/dist
+coverage
+package-lock.json
+docs/openapi.yaml
+*.pages

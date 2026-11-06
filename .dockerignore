@@ -1,0 +1,14 @@
+node_modules
+ui/node_modules
+ui/dist
+dist
+coverage
+*.db
+*.db-journal
+.env
+.git
+.github
+playwright-report
+test-results
+.DS_Store
+*.pages

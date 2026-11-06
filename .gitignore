@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+*.db
+*.db-journal
+.env
+.env.local
+ui/dist/
+ui/node_modules/
+playwright-report/
+test-results/
+.DS_Store
+*.pages

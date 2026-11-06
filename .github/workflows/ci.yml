@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ui/package-lock.json
+
+      - name: Установка зависимостей
+        run: |
+          npm ci
+          npm --prefix ui ci
+
+      - name: Генерация Prisma-клиента
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck (api + ui)
+        run: npm run typecheck
+
+      - name: Тесты (unit + integration)
+        run: npm test
+
+      - name: Сборка (ui + api + seed)
+        run: npm run build
+
+      - name: Генерация OpenAPI-спеки
+        run: npm run openapi

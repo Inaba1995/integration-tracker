@@ -1,0 +1,41 @@
+services:
+  # Приложение: API + UI (собирается в один образ)
+  app:
+    build: .
+    ports:
+      - '${PORT:-4000}:4000'
+    environment:
+      NODE_ENV: production
+      PORT: '4000'
+      DATABASE_URL: postgresql://tracker:tracker@db:5432/tracker
+      # Секреты задаются в .env (см. .env.example); значения ниже — только для демо
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-change-me-webhook-secret}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4000}
+      ONEC_MODE: ${ONEC_MODE:-mock}
+      ONEC_BASE_URL: ${ONEC_BASE_URL:-}
+      ONEC_TOKEN: ${ONEC_TOKEN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # База данных: PostgreSQL
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tracker
+      POSTGRES_PASSWORD: tracker
+      POSTGRES_DB: tracker
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tracker -d tracker']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:
